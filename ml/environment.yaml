@@ -1,0 +1,9 @@
+name: train-env
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+      - azure-ai-ml
+      - scikit-learn
+      - joblib
+      - pandas

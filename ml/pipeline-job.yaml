@@ -7,3 +7,7 @@ environment:
 compute: azureml:cpu-cluster
 experiment_name: iris-train
 description: Train iris model and store model.joblib in outputs
+
+outputs:
+  model_dir:
+    type: uri_folder

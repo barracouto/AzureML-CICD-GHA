@@ -71,6 +71,17 @@ jobs:
           az ml job stream --name "$JOB_ID" \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --workspace-name "${{ vars.AZURE_WORKSPACE_NAME }}"
+      
+      - name: Register model from job output
+        run: |
+          echo "Using job: $JOB_ID"
+          az ml model create \
+            --name iris-model \
+            --type custom_model \
+            --path "azureml://jobs/${JOB_ID}/outputs/model_dir" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --workspace-name "$AZURE_WORKSPACE_NAME"
+        
 
       # Inspect the job's outputs and register the model
       - name: Inspect job outputs (temporary)

@@ -49,23 +49,25 @@ jobs:
       - name: Run unit tests
         run: pytest -q
 
-# TRAIN WAIT REGISTER DEPLOY
+      # TRAIN WAIT REGISTER DEPLOY
 
       # Submit the training job and WAIT until it finishes
       - name: Submit AML training job and wait
-        id: submit-train
         run: |
+          az ml compute list \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --workspace-name "${{ vars.AZURE_WORKSPACE_NAME }}" -o table
+
           JOB_ID=$(az ml job create \
             --file ml/pipeline-job.yaml \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --workspace-name "${{ vars.AZURE_WORKSPACE_NAME }}" \
+            --set compute=azureml:${AML_COMPUTE} \
             --query name -o tsv)
 
           echo "Submitted job: $JOB_ID"
-          # Make JOB_ID available to later steps in this job
           echo "JOB_ID=$JOB_ID" >> "$GITHUB_ENV"
 
-          # Stream logs until the job completes (success or fail)
           az ml job stream --name "$JOB_ID" \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --workspace-name "${{ vars.AZURE_WORKSPACE_NAME }}"
@@ -121,5 +123,3 @@ jobs:
             --request-file request.json \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --workspace-name "${{ vars.AZURE_WORKSPACE_NAME }}"
-
-

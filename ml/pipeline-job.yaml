@@ -4,6 +4,6 @@ code: .
 environment:
   conda_file: ./environment.yaml
   image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu20.04:latest
-compute: azureml:${{env.AML_COMPUTE}}
+compute: azureml:cpu-cluster
 experiment_name: iris-train
 description: Train iris model and store model.joblib in outputs

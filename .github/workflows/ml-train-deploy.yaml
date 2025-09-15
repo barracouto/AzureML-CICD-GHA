@@ -93,55 +93,57 @@ jobs:
           echo "Downloaded files:"
           ls -R ./_job
 
-      # Register the model from the job's outputs
-      - name: Register model (take last job's outputs)
+      # (optional) sanity check that training finished successfully
+      - name: Verify training completed
+        run: |
+          STATUS=$(az ml job show -n "$JOB_ID" \
+            -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME" \
+            --query status -o tsv)
+          echo "Job status: $STATUS"
+          test "$STATUS" = "Completed"
+
+      # register the *named* output "model_dir" from that job
+      - name: Register model from job output
         run: |
           echo "Using job: $JOB_ID"
-          # Try the artifacts path (works even if you didn't declare named outputs)
           az ml model create \
             --name iris-model \
             --type custom_model \
-            --path "azureml://jobs/${JOB_ID}/outputs/artifacts/paths/outputs/model.joblib" \
-            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --workspace-name "${{ vars.AZURE_WORKSPACE_NAME }}"
+            --path "azureml://jobs/${JOB_ID}/outputs/model_dir" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --workspace-name "$AZURE_WORKSPACE_NAME"
 
-      # Create the endpoint if it doesn't exist (idempotent)
+      # then proceed to endpoint/deployment
       - name: Create endpoint (idempotent)
         run: |
           az ml online-endpoint show \
-            --name "${{ vars.AML_ENDPOINT_NAME }}" \
-            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --workspace-name "${{ vars.AZURE_WORKSPACE_NAME }}" \
-            || az ml online-endpoint create \
-                 --name "${{ vars.AML_ENDPOINT_NAME }}" \
-                 --file infra/endpoint.yaml \
-                 --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-                 --workspace-name "${{ vars.AZURE_WORKSPACE_NAME }}"
+            --name "$AML_ENDPOINT_NAME" \
+            -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME" \
+          || az ml online-endpoint create \
+              --name "$AML_ENDPOINT_NAME" \
+              --file infra/endpoint.yaml \
+              -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME"
 
-      # Create/Update the deployment and route 100% traffic
       - name: Create/Update deployment
         run: |
           MODEL_VER=$(az ml model list --name iris-model \
-            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --workspace-name "${{ vars.AZURE_WORKSPACE_NAME }}" \
+            -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME" \
             --query "[-1].version" -o tsv)
 
-          echo "Latest model version: $MODEL_VER"
-
-          # Update the YAML to point at the latest version
+          # update your deployment yaml to reference the fresh model version
           sed -i "s#azureml:iris-model:1#azureml:iris-model:${MODEL_VER}#g" infra/deployment.yaml
 
           az ml online-deployment create \
             --file infra/deployment.yaml \
-            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --workspace-name "${{ vars.AZURE_WORKSPACE_NAME }}" \
+            -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME" \
             --all-traffic
 
-      # (Optional) Smoke test: invoke the endpoint once
-      - name: Invoke endpoint (smoke test)
-        run: |
-          az ml online-endpoint invoke \
-            --name "${{ vars.AML_ENDPOINT_NAME }}" \
-            --request-file request.json \
-            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --workspace-name "${{ vars.AZURE_WORKSPACE_NAME }}"
+
+            # (Optional) Smoke test: invoke the endpoint once
+            - name: Invoke endpoint (smoke test)
+              run: |
+                az ml online-endpoint invoke \
+                  --name "${{ vars.AML_ENDPOINT_NAME }}" \
+                  --request-file request.json \
+                  --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+                  --workspace-name "${{ vars.AZURE_WORKSPACE_NAME }}"

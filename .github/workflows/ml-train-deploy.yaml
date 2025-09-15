@@ -56,7 +56,7 @@ jobs:
         id: submit-train
         run: |
           JOB_ID=$(az ml job create \
-            --file ml/pipeline-job.yml \
+            --file ml/pipeline-job.yaml \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --workspace-name "${{ vars.AZURE_WORKSPACE_NAME }}" \
             --query name -o tsv)
@@ -90,7 +90,7 @@ jobs:
             --workspace-name "${{ vars.AZURE_WORKSPACE_NAME }}" \
             || az ml online-endpoint create \
                  --name "${{ vars.AML_ENDPOINT_NAME }}" \
-                 --file infra/endpoint.yml \
+                 --file infra/endpoint.yaml \
                  --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
                  --workspace-name "${{ vars.AZURE_WORKSPACE_NAME }}"
 
@@ -105,10 +105,10 @@ jobs:
           echo "Latest model version: $MODEL_VER"
 
           # Update the YAML to point at the latest version
-          sed -i "s#azureml:iris-model:1#azureml:iris-model:${MODEL_VER}#g" infra/deployment.yml
+          sed -i "s#azureml:iris-model:1#azureml:iris-model:${MODEL_VER}#g" infra/deployment.yaml
 
           az ml online-deployment create \
-            --file infra/deployment.yml \
+            --file infra/deployment.yaml \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --workspace-name "${{ vars.AZURE_WORKSPACE_NAME }}" \
             --all-traffic

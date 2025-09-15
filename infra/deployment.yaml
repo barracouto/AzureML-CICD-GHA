@@ -6,7 +6,7 @@ code_configuration:
   scoring_script: score.py
 environment:
   image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu20.04:latest
-  conda_file: ./ml/environment.yml
+  conda_file: ./ml/environment.yaml
 instance_type: Standard_DS2_v2
 instance_count: 1
 app_insights_enabled: true

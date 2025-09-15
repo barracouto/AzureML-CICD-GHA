@@ -49,7 +49,7 @@ jobs:
       - name: Run unit tests
         run: pytest -q
 
-      # TRAIN WAIT REGISTER DEPLOY
+
 
       # Submit the training job and WAIT until it finishes
       - name: Submit AML training job and wait

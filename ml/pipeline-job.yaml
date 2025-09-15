@@ -1,8 +1,8 @@
 $schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json
 command: python train.py
-code: ./ml
+code: .
 environment:
-  conda_file: ./ml/environment.yaml
+  conda_file: ./environment.yaml
   image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu20.04:latest
 compute: azureml:${{env.AML_COMPUTE}}
 experiment_name: iris-train

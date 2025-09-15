@@ -45,4 +45,81 @@ jobs:
           pip install azure-ai-ml pandas scikit-learn joblib pytest
           az extension add -n ml --yes
 
-# updated gha oidc
+        # (Optional) Run unit tests
+      - name: Run unit tests
+        run: pytest -q
+
+# TRAIN WAIT REGISTER DEPLOY
+
+      # Submit the training job and WAIT until it finishes
+      - name: Submit AML training job and wait
+        id: submit-train
+        run: |
+          JOB_ID=$(az ml job create \
+            --file ml/pipeline-job.yml \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --workspace-name "${{ vars.AZURE_WORKSPACE_NAME }}" \
+            --query name -o tsv)
+
+          echo "Submitted job: $JOB_ID"
+          # Make JOB_ID available to later steps in this job
+          echo "JOB_ID=$JOB_ID" >> "$GITHUB_ENV"
+
+          # Stream logs until the job completes (success or fail)
+          az ml job stream --name "$JOB_ID" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --workspace-name "${{ vars.AZURE_WORKSPACE_NAME }}"
+
+      # Register the model from the job's outputs
+      - name: Register model (take last job's outputs)
+        run: |
+          echo "Using job: $JOB_ID"
+          az ml model create \
+            --name iris-model \
+            --type custom_model \
+            --path "azureml://jobs/${JOB_ID}/outputs/outputs" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --workspace-name "${{ vars.AZURE_WORKSPACE_NAME }}"
+
+      # Create the endpoint if it doesn't exist (idempotent)
+      - name: Create endpoint (idempotent)
+        run: |
+          az ml online-endpoint show \
+            --name "${{ vars.AML_ENDPOINT_NAME }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --workspace-name "${{ vars.AZURE_WORKSPACE_NAME }}" \
+            || az ml online-endpoint create \
+                 --name "${{ vars.AML_ENDPOINT_NAME }}" \
+                 --file infra/endpoint.yml \
+                 --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+                 --workspace-name "${{ vars.AZURE_WORKSPACE_NAME }}"
+
+      # Create/Update the deployment and route 100% traffic
+      - name: Create/Update deployment
+        run: |
+          MODEL_VER=$(az ml model list --name iris-model \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --workspace-name "${{ vars.AZURE_WORKSPACE_NAME }}" \
+            --query "[-1].version" -o tsv)
+
+          echo "Latest model version: $MODEL_VER"
+
+          # Update the YAML to point at the latest version
+          sed -i "s#azureml:iris-model:1#azureml:iris-model:${MODEL_VER}#g" infra/deployment.yml
+
+          az ml online-deployment create \
+            --file infra/deployment.yml \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --workspace-name "${{ vars.AZURE_WORKSPACE_NAME }}" \
+            --all-traffic
+
+      # (Optional) Smoke test: invoke the endpoint once
+      - name: Invoke endpoint (smoke test)
+        run: |
+          az ml online-endpoint invoke \
+            --name "${{ vars.AML_ENDPOINT_NAME }}" \
+            --request-file request.json \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --workspace-name "${{ vars.AZURE_WORKSPACE_NAME }}"
+
+

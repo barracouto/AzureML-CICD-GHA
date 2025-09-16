@@ -2,7 +2,7 @@ $schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json
 code: .
 command: >-
   python train.py --output ${{outputs.model_dir}}
-environment: azureml:iris-env:1
+environment: azureml:iris-env@latest
 compute: azureml:cpu-cluster
 experiment_name: iris-train
 description: Train iris model and store model.joblib in outputs
@@ -10,3 +10,4 @@ description: Train iris model and store model.joblib in outputs
 outputs:
   model_dir:
     type: uri_folder
+    mode: rw_mount

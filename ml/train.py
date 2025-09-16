@@ -4,15 +4,9 @@ from sklearn.datasets import load_iris
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 
-# default
 out_dir = "outputs"
-
-# accept either --output or --output_dir
-argv = sys.argv
-if "--output" in argv:
-    out_dir = argv[argv.index("--output") + 1]
-elif "--output_dir" in argv:
-    out_dir = argv[argv.index("--output_dir") + 1]
+if "--output" in sys.argv:
+    out_dir = sys.argv[sys.argv.index("--output") + 1]
 
 iris = load_iris()
 X_train, X_test, y_train, y_test = train_test_split(

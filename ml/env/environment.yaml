@@ -1,0 +1,7 @@
+$schema: https://azuremlschemas.azureedge.net/latest/environment.schema.json
+name: iris-env
+version: 1
+description: Environment for iris training
+os_type: linux
+image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu20.04:latest
+conda_file: ml/env/conda.yaml

@@ -48,24 +48,32 @@ jobs:
       - name: Grant workspace MI access to default blob (idempotent)
         run: |
           set -euo pipefail
+
           # Workspace managed identity (object id)
           WS_MI=$(az ml workspace show \
-            -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME" \
+            -g "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_WORKSPACE_NAME" \
             --query identity.principalId -o tsv)
 
           # Storage account resource ID behind the default datastore
-          STG_SCOPE=$(az ml datastore show -n workspaceblobstore \
-            -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME" \
+          STG_SCOPE=$(az ml datastore show \
+            -g "$AZURE_RESOURCE_GROUP" \
+            -w "$AZURE_WORKSPACE_NAME" \
+            -n workspaceblobstore \
             --query account_arm_id -o tsv)
 
-          # If the role assignment doesn't exist, create it
-          ASSIGN_ID=$(az role assignment list \
-            --assignee "$WS_MI" \
-            --role "Storage Blob Data Contributor" \
-            --scope "$STG_SCOPE" \
-            --query "[0].id" -o tsv)
+          echo "Workspace MI: $WS_MI"
+          echo "Storage scope: $STG_SCOPE"
+          if [ -z "$WS_MI" ] || [ -z "$STG_SCOPE" ]; then
+            echo "Failed to resolve workspace MI or storage scope"; exit 1
+          fi
 
-          if [ -z "${ASSIGN_ID:-}" ]; then
+          # If the role assignment doesn't exist, create it
+          if ! az role assignment list \
+                --assignee "$WS_MI" \
+                --role "Storage Blob Data Contributor" \
+                --scope "$STG_SCOPE" \
+                --query "[0].id" -o tsv | grep -q .; then
             az role assignment create \
               --assignee-object-id "$WS_MI" \
               --assignee-principal-type ServicePrincipal \
@@ -74,17 +82,15 @@ jobs:
           else
             echo "RBAC already present."
           fi
-          
+
       - name: Create/Update AML environment (idempotent)
         run: |
           az ml environment show \
             --name iris-env --version 1 \
-            --resource-group "$AZURE_RESOURCE_GROUP" \
-            --workspace-name "$AZURE_WORKSPACE_NAME" >/dev/null 2>&1 || \
+            -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME" >/dev/null 2>&1 || \
           az ml environment create \
             --file ml/env/environment.yaml \
-            --resource-group "$AZURE_RESOURCE_GROUP" \
-            --workspace-name "$AZURE_WORKSPACE_NAME"      
+            -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME" 
 
       - name: Run unit tests
         run: pytest -q

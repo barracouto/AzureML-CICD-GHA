@@ -10,4 +10,4 @@ description: Train iris model and store model.joblib in outputs
 outputs:
   model_dir:
     type: uri_folder
-    mode: rw_mount
+    mode: upload

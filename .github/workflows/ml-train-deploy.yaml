@@ -47,10 +47,14 @@ jobs:
 
       - name: Create/Update AML environment (idempotent)
         run: |
+          az ml environment show \
+            --name iris-env --version 1 \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --workspace-name "$AZURE_WORKSPACE_NAME" >/dev/null 2>&1 || \
           az ml environment create \
             --file ml/env/environment.yaml \
             --resource-group "$AZURE_RESOURCE_GROUP" \
-            --workspace-name "$AZURE_WORKSPACE_NAME"
+            --workspace-name "$AZURE_WORKSPACE_NAME"      
 
       - name: Run unit tests
         run: pytest -q

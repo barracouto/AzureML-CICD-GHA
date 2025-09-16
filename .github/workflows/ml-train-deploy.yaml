@@ -45,46 +45,36 @@ jobs:
           pip install azure-ai-ml pytest
           az extension add -n ml --yes
 
-      - name: Ensure workspace MI can write to storage (idempotent)
+      - name: Grant workspace MI access to default blob (idempotent)
         run: |
-          # Workspace managed identity principalId
-          WS_MI=$(az resource show \
-            -g "$AZURE_RESOURCE_GROUP" \
-            -n "$AZURE_WORKSPACE_NAME" \
-            --resource-type Microsoft.MachineLearningServices/workspaces \
-            --query "identity.principalId" -o tsv)
-          echo "Workspace MI: $WS_MI"
+          set -euo pipefail
+          # Workspace managed identity (object id)
+          WS_MI=$(az ml workspace show \
+            -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME" \
+            --query identity.principalId -o tsv)
 
-          # Default datastore -> storage account + its resource id
-          STG_NAME=$(az ml datastore show \
-            -n workspaceblobstore \
-            -g "$AZURE_RESOURCE_GROUP" \
-            -w "$AZURE_WORKSPACE_NAME" \
-            --query "account_name" -o tsv)
-          STG_ID=$(az storage account show \
-            -g "$AZURE_RESOURCE_GROUP" -n "$STG_NAME" \
-            --query id -o tsv)
+          # Storage account resource ID behind the default datastore
+          STG_SCOPE=$(az ml datastore show -n workspaceblobstore \
+            -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME" \
+            --query account_arm_id -o tsv)
 
-          # Grant role if missing
-          az role assignment list \
-            --assignee "$WS_MI" \
-            --scope "$STG_ID" \
-            --query "[?roleDefinitionName=='Storage Blob Data Contributor']" -o tsv | grep -q . || \
-          az role assignment create \
+          # If the role assignment doesn't exist, create it
+          ASSIGN_ID=$(az role assignment list \
             --assignee "$WS_MI" \
             --role "Storage Blob Data Contributor" \
-            --scope "$STG_ID"
+            --scope "$STG_SCOPE" \
+            --query "[0].id" -o tsv)
 
-          # If your compute has its own identity, grant it too (safe if none)
-          COMP_MI=$(az ml compute show \
-            -n "$AML_COMPUTE" -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME" \
-            --query "identity.principalId" -o tsv 2>/dev/null || echo "")
-          if [ -n "$COMP_MI" ] && [ "$COMP_MI" != "None" ]; then
-            az role assignment list --assignee "$COMP_MI" --scope "$STG_ID" \
-              --query "[?roleDefinitionName=='Storage Blob Data Contributor']" -o tsv | grep -q . || \
-            az role assignment create --assignee "$COMP_MI" --role "Storage Blob Data Contributor" --scope "$STG_ID"
+          if [ -z "${ASSIGN_ID:-}" ]; then
+            az role assignment create \
+              --assignee-object-id "$WS_MI" \
+              --assignee-principal-type ServicePrincipal \
+              --role "Storage Blob Data Contributor" \
+              --scope "$STG_SCOPE"
+          else
+            echo "RBAC already present."
           fi
-
+          
       - name: Create/Update AML environment (idempotent)
         run: |
           az ml environment show \

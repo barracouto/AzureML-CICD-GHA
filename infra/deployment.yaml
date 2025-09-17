@@ -4,7 +4,7 @@ model: azureml:iris-model:1
 code_configuration:
   code: ../ml
   scoring_script: score.py
-environment: azureml:iris-env:2
+environment: azureml:iris-env:1
 instance_type: Standard_DS3_v2
-instance_count: 1
+instance_count: 1 #update if the job timesout
 app_insights_enabled: true

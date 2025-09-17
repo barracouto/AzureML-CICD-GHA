@@ -1,13 +1,14 @@
 $schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json
+command: python train.py --output ${{outputs.model_dir}}
 code: .
-command: >
-  python train.py --output ${{outputs.model_dir}}
-environment: azureml:iris-env:1   # <— use the environment you registered in GHA
-compute: azureml:cpu-cluster       # will be overridden by --set compute in CI
+environment: azureml:iris-env:1
+compute: azureml:${{env.AML_COMPUTE}}
 experiment_name: iris-train
-description: Train iris model and store model.joblib in outputs
+description: Train iris model and write model.joblib to named output
+
+identity:
+  type: user_identity
 
 outputs:
   model_dir:
     type: uri_folder
-    mode: upload

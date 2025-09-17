@@ -45,61 +45,30 @@ jobs:
           pip install azure-ai-ml pytest
           az extension add -n ml --yes
 
-      - name: Ensure workspace MI + grant storage RBAC (idempotent)
+      - name: Grant storage RBAC to GitHub app (for user_identity jobs)
         run: |
           set -euo pipefail
-
-          # 1) Enable System Assigned MI on the workspace if it's missing
-          WS_ID=$(az ml workspace show \
-            -g "$AZURE_RESOURCE_GROUP" --name "$AZURE_WORKSPACE_NAME" \
-            --query id -o tsv)
-
-          WS_MI=$(az ml workspace show \
-            -g "$AZURE_RESOURCE_GROUP" --name "$AZURE_WORKSPACE_NAME" \
-            --query identity.principalId -o tsv)
-
-          if [ -z "${WS_MI:-}" ]; then
-            echo "Enabling system-assigned managed identity on workspace..."
-            az resource update --ids "$WS_ID" --set identity.type=SystemAssigned >/dev/null
-            # re-read principalId
-            WS_MI=$(az ml workspace show \
-              -g "$AZURE_RESOURCE_GROUP" --name "$AZURE_WORKSPACE_NAME" \
-              --query identity.principalId -o tsv)
-          fi
-          echo "Workspace MI: ${WS_MI:-<none>}"
-
-          if [ -z "${WS_MI:-}" ]; then
-            echo "Workspace MI could not be enabled (need Owner on the workspace)."; exit 1
-          fi
-
-          # 2) Resolve storage account behind the default datastore
-          # Older/newer CLI outputs differ; try both paths for account name.
+          # Resolve storage account behind default datastore
           STG_ACC=$(az ml datastore show \
             -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME" \
             -n workspaceblobstore \
             --query "properties.account_name || account_name" -o tsv)
-
           if [ -z "${STG_ACC:-}" ]; then
             echo "Could not resolve storage account from 'workspaceblobstore'."; exit 1
           fi
+          STG_SCOPE=$(az storage account show -g "$AZURE_RESOURCE_GROUP" -n "$STG_ACC" --query id -o tsv)
 
-          STG_SCOPE=$(az storage account show \
-            -g "$AZURE_RESOURCE_GROUP" -n "$STG_ACC" \
-            --query id -o tsv)
+          # Service principal object id of the GitHub OIDC app you use to login
+          APP_SP_OBJ=$(az ad sp show --id "$AZURE_CLIENT_ID" --query id -o tsv)
 
-          echo "Storage scope: ${STG_SCOPE:-<none>}"
-          if [ -z "${STG_SCOPE:-}" ]; then
-            echo "Failed to resolve storage scope."; exit 1
-          fi
-
-          # 3) Assign 'Storage Blob Data Contributor' to the workspace MI on the storage account
+          echo "Assigning 'Storage Blob Data Contributor' to $APP_SP_OBJ on $STG_SCOPE (if missing)"
           if ! az role assignment list \
-                --assignee "$WS_MI" \
+                --assignee "$APP_SP_OBJ" \
                 --role "Storage Blob Data Contributor" \
                 --scope "$STG_SCOPE" \
                 --query "[0].id" -o tsv | grep -q .; then
             az role assignment create \
-              --assignee-object-id "$WS_MI" \
+              --assignee-object-id "$APP_SP_OBJ" \
               --assignee-principal-type ServicePrincipal \
               --role "Storage Blob Data Contributor" \
               --scope "$STG_SCOPE"

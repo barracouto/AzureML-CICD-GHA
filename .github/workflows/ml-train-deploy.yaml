@@ -127,7 +127,7 @@ jobs:
             --name stephanie-iris-deployment-3 \
             --file infra/deployment.yaml \
             -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME" \
-            --set environment="azureml:iris-env:2" \
+            --set environment="azureml:iris-env:8" \
             --all-traffic
 
       - name: Invoke endpoint (smoke test)

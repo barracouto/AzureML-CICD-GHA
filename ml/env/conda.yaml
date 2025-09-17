@@ -1,7 +1,4 @@
-name: iris-train-conda
-channels:
-  - conda-forge
-  - defaults
+name: train-env
 dependencies:
   - python=3.10
   - pip
@@ -9,4 +6,3 @@ dependencies:
       - scikit-learn==1.3.2
       - joblib
       - pandas
-      - numpy

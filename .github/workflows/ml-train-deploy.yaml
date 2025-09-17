@@ -49,7 +49,7 @@ jobs:
       - name: Create/Update AML environment (idempotent)
         run: |
           az ml environment show \
-            --name iris-env --version 1 \
+            --name iris-env --version 2 \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --workspace-name "$AZURE_WORKSPACE_NAME" >/dev/null 2>&1 || \
           az ml environment create \
@@ -116,7 +116,7 @@ jobs:
           sed -i "s#azureml:iris-model:1#azureml:iris-model:${MODEL_VER}#g" infra/deployment.yaml
 
           az ml online-deployment create \
-            --name stephanie-iris-deployment \
+            --name stephanie-iris-deployment-2 \
             --file infra/deployment.yaml \
             -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME" \
             --all-traffic

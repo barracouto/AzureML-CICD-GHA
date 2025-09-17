@@ -6,5 +6,5 @@ code_configuration:
   scoring_script: score.py
 environment: azureml:iris-env:1
 instance_type: Standard_DS3_v2
-instance_count: 1 #update if the job timesout
+instance_count: 3 #update if the job timesout
 app_insights_enabled: true

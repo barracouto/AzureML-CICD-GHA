@@ -106,6 +106,14 @@ jobs:
                --name "$AML_ENDPOINT_NAME" \
                --file infra/endpoint.yaml \
                -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME"
+      - name: Ensure inference environment exists (idempotent)
+        run: |
+          az ml environment show \
+            --name iris-env --version 2 \
+            -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME" >/dev/null 2>&1 || \
+          az ml environment create \
+            --file ml/env/environment.yaml \
+            -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME"
 
       - name: Create/Update deployment
         run: |
@@ -119,6 +127,7 @@ jobs:
             --name stephanie-iris-deployment-2 \
             --file infra/deployment.yaml \
             -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME" \
+            --set environment="azureml:iris-env:2" \
             --all-traffic
 
       - name: Invoke endpoint (smoke test)

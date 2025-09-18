@@ -141,7 +141,7 @@ jobs:
 
   monitor_and_alerts:
     name: Wire AML → LA + Alerts
-    needs: deploy
+    needs: ml-cicd
     runs-on: ubuntu-latest
     permissions:
       id-token: write

@@ -17,12 +17,14 @@ def init():
 
 def run(raw_data):
     try:
-        # Accept either a JSON string or already-parsed dict
         payload = json.loads(raw_data) if isinstance(raw_data, (str, bytes)) else raw_data
+        corr = payload.get("correlation_id") or str(uuid.uuid4())
+        t0 = time.perf_counter()
         data = np.array(payload["data"])
         preds = model.predict(data).tolist()
-        logging.info({"predictions": preds})
-        return {"predictions": preds}
+        ms = (time.perf_counter() - t0) * 1000
+        logging.info({"correlation_id": corr, "latency_ms": round(ms, 2), "predictions": preds})
+        return {"correlation_id": corr, "predictions": preds, "latency_ms": round(ms, 2)}
     except Exception as e:
         logging.exception("Scoring error")
         return {"error": str(e)}

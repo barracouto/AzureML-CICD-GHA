@@ -160,19 +160,37 @@ jobs:
       ENDPOINT_NAME: iris-endpoint
       DIAG_NAME: aml-to-la
       ACTION_GROUP: iris-alerts
-      AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
-      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
-      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
     steps:
       - uses: actions/checkout@v4
+      - name: Resolve OIDC inputs
+        id: oidc
+        shell: bash
+        run: |
+          set -e
+          CID="${{ secrets.AZURE_CLIENT_ID }}"
+          [ -z "$CID" ] && CID="${{ vars.AZURE_CLIENT_ID }}"
+          TID="${{ secrets.AZURE_TENANT_ID }}"
+          [ -z "$TID" ] && TID="${{ vars.AZURE_TENANT_ID }}"
+          SUB="${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+          [ -z "$SUB" ] && SUB="${{ vars.AZURE_SUBSCRIPTION_ID }}"
 
-      - name: Azure login (OIDC)
+          # Fail fast with clear guidance
+          [ -z "$CID" ] && { echo "AZURE_CLIENT_ID not set (add as a repo Variable or Secret)."; exit 1; }
+          [ -z "$TID" ] && { echo "AZURE_TENANT_ID not set (add as a repo Variable or Secret)."; exit 1; }
+          [ -z "$SUB" ] && { echo "AZURE_SUBSCRIPTION_ID not set (add as a repo Variable or Secret)."; exit 1; }
+
+          echo "AZ_CLIENT_ID=$CID"           >> $GITHUB_ENV
+          echo "AZ_TENANT_ID=$TID"           >> $GITHUB_ENV
+          echo "AZ_SUBSCRIPTION_ID=$SUB"     >> $GITHUB_ENV
+          echo "Resolved OIDC inputs."
+
+      - name: Azure login (OIDC, no secrets)
         uses: azure/login@v2
         with:
-          client-id: ${{ env.AZURE_CLIENT_ID }}
-          tenant-id: ${{ env.AZURE_TENANT_ID }}
-          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+          client-id: ${{ env.AZ_CLIENT_ID }}
+          tenant-id: ${{ env.AZ_TENANT_ID }}
+          subscription-id: ${{ env.AZ_SUBSCRIPTION_ID }}
 
       - name: Ensure CLI extensions
         run: |
@@ -190,7 +208,7 @@ jobs:
           WS_ID=$(az ml workspace show -g "$RESOURCE_GROUP" -w "$AML_WORKSPACE" --query id -o tsv)
           echo "WS_ID=$WS_ID" >> $GITHUB_OUTPUT
 
-          # Pick a Log Analytics workspace in the same RG (or replace with a specific name)
+          # Pick a Log Analytics workspace in the same RG (change if you want a specific one)
           LAW_NAME=$(az monitor log-analytics workspace list -g "$RESOURCE_GROUP" --query "[0].name" -o tsv)
           if [ -z "$LAW_NAME" ] || [ "$LAW_NAME" = "null" ]; then
             echo "No Log Analytics workspace found in RG $RESOURCE_GROUP" >&2
@@ -221,4 +239,77 @@ jobs:
               --name "$NAME" \
               --resource "$WS_ID" \
               --workspace "${{ steps.ids.outputs.LA_ID }}" \
-              --set logs='[{"categoryGroup":"All]()
+              --set logs='[{"categoryGroup":"AllLogs","enabled":true}]' \
+                    metrics='[{"category":"AllMetrics","enabled":true}]'
+          fi
+
+      - name: Create/Update Action Group (email)
+        shell: bash
+        run: |
+          set -e
+          EMAIL="${{ secrets.ALERT_EMAIL }}"
+          if [ -z "$EMAIL" ]; then EMAIL="${{ vars.ALERT_EMAIL }}"; fi
+          if [ -z "$EMAIL" ]; then echo "Set ALERT_EMAIL (as a secret or variable)"; exit 1; fi
+
+          if ! az monitor action-group show -g "$RESOURCE_GROUP" -n "$ACTION_GROUP" >/dev/null 2>&1; then
+            az monitor action-group create -g "$RESOURCE_GROUP" -n "$ACTION_GROUP" --short-name iris \
+              --email-receivers "[{ \"name\": \"primary\", \"emailAddress\": \"$EMAIL\" }]"
+          else
+            az monitor action-group update -g "$RESOURCE_GROUP" -n "$ACTION_GROUP" \
+              --set emailReceivers="[{'name':'primary','emailAddress':'$EMAIL'}]"
+          fi
+
+      - name: Create/Update Alert – 5xx failures in last 5m
+        shell: bash
+        run: |
+          set -e
+          LA_ID="${{ steps.ids.outputs.LA_ID }}"
+          LA_LOC="${{ steps.ids.outputs.LA_LOC }}"
+          RULE="iris-5xx-failures"
+          QUERY="AmlOnlineEndpointAccessLogs | where TimeGenerated > ago(5m) | where EndpointName == '$ENDPOINT_NAME' and StatusCode >= 500"
+          if az monitor scheduled-query show -g "$RESOURCE_GROUP" -n "$RULE" >/dev/null 2>&1; then
+            az monitor scheduled-query update -g "$RESOURCE_GROUP" -n "$RULE" \
+              --scopes "$LA_ID" --location "$LA_LOC" --severity 3 --evaluation-frequency 5m --window-size 5m \
+              --action-groups "$(az monitor action-group show -g "$RESOURCE_GROUP" -n "$ACTION_GROUP" --query id -o tsv)" \
+              --condition "count 'Q1' > 0" \
+              --condition-query "Q1=$QUERY"
+          else
+            az monitor scheduled-query create -g "$RESOURCE_GROUP" -n "$RULE" \
+              --scopes "$LA_ID" --location "$LA_LOC" --severity 3 --evaluation-frequency 5m --window-size 5m \
+              --action-groups "$(az monitor action-group show -g "$RESOURCE_GROUP" -n "$ACTION_GROUP" --query id -o tsv)" \
+              --condition "count 'Q1' > 0" \
+              --condition-query "Q1=$QUERY" \
+              --description "Any 5xx responses at iris-endpoint in the last 5 minutes."
+          fi
+
+      - name: Create/Update Alert – no predictions in last 10m
+        shell: bash
+        run: |
+          set -e
+          LA_ID="${{ steps.ids.outputs.LA_ID }}"
+          LA_LOC="${{ steps.ids.outputs.LA_LOC }}"
+          RULE="iris-no-predictions-10m"
+          QUERY="AppTraces | where TimeGenerated > ago(10m) | where Message has 'predictions'"
+          if az monitor scheduled-query show -g "$RESOURCE_GROUP" -n "$RULE" >/dev/null 2>&1; then
+            az monitor scheduled-query update -g "$RESOURCE_GROUP" -n "$RULE" \
+              --scopes "$LA_ID" --location "$LA_LOC" --severity 3 --evaluation-frequency 5m --window-size 10m \
+              --action-groups "$(az monitor action-group show -g "$RESOURCE_GROUP" -n "$ACTION_GROUP" --query id -o tsv)" \
+              --condition "count 'Q2' < 1" \
+              --condition-query "Q2=$QUERY"
+          else
+            az monitor scheduled-query create -g "$RESOURCE_GROUP" -n "$RULE" \
+              --scopes "$LA_ID" --location "$LA_LOC" --severity 3 --evaluation-frequency 5m --window-size 10m \
+              --action-groups "$(az monitor action-group show -g "$RESOURCE_GROUP" -n "$ACTION_GROUP" --query id -o tsv)" \
+              --condition "count 'Q2' < 1" \
+              --condition-query "Q2=$QUERY" \
+              --description "No predictions traces in 10 minutes (endpoint likely unhealthy or idle)."
+          fi
+
+      - name: Smoke a request (creates fresh logs)
+        shell: bash
+        run: |
+          echo '{"data":[[5.1,3.5,1.4,0.2]]}' > request.json
+          az ml online-endpoint invoke -n "$ENDPOINT_NAME" --request-file request.json || true
+
+      - name: Done
+        run: echo "✅ Monitoring and alerting configured"

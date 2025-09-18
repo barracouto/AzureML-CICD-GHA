@@ -116,6 +116,7 @@ jobs:
 #                                          #
 #                                          #
 #  UPDATE DEPLOYMENT NAME AFTER EACH RUN   #
+#         Line 132 in this step            #
 #                                          #
 #                                          #
 ############################################
@@ -129,7 +130,7 @@ jobs:
           sed -i "s#azureml:iris-model:1#azureml:iris-model:${MODEL_VER}#g" infra/deployment.yaml
 
           az ml online-deployment create \
-          --name stephanie-iris-deployment-6 \ ####### <-- UPDATE THIS NAME
+          --name stephanie-iris-deployment-7 \
             --file infra/deployment.yaml \
             -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME" \
             --set environment="azureml:iris-env-twopointoh:1" \

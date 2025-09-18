@@ -1,7 +1,7 @@
 $schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json
 command: python train.py --output ${{outputs.model_dir}}
 code: .
-environment: azureml:iris-env:1
+environment: azureml:iris-env-twopointoh:1
 compute: azureml:${{env.AML_COMPUTE}}
 experiment_name: iris-train
 description: Train iris model and write model.joblib to named output

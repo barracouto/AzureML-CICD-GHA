@@ -50,7 +50,6 @@ jobs:
         run: |
           az ml environment create \
             --file ml/env/environment.yaml \
-            -- version 1 \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --workspace-name "$AZURE_WORKSPACE_NAME"
             

@@ -116,7 +116,7 @@ jobs:
 #                                          #
 #                                          #
 #  UPDATE DEPLOYMENT NAME AFTER EACH RUN   #
-#         Line 132 in this step            #
+#         Line 133 in this step            #
 #                                          #
 #                                          #
 ############################################
@@ -130,7 +130,7 @@ jobs:
           sed -i "s#azureml:iris-model:1#azureml:iris-model:${MODEL_VER}#g" infra/deployment.yaml
 
           az ml online-deployment create \
-          --name stephanie-iris-deployment-7 \
+          --name stephanie-iris-deployment-8 \
             --file infra/deployment.yaml \
             -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME" \
             --set environment="azureml:iris-env-twopointoh:1" \
@@ -198,7 +198,7 @@ jobs:
         shell: bash
         run: |
           set -e
-          WS_ID=$(az ml workspace show -g "$RESOURCE_GROUP" -w "$AML_WORKSPACE" --query id -o tsv)
+          WS_ID=$(az ml workspace show -g "$RESOURCE_GROUP" -n "$AML_WORKSPACE" --query id -o tsv)
           echo "WS_ID=$WS_ID" >> $GITHUB_OUTPUT
 
           # Pick a Log Analytics workspace in the same RG (change if you want a specific one)

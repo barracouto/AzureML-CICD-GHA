@@ -121,6 +121,33 @@ jobs:
 #                                          #
 ############################################
 
+      - name: Create/Update deployment
+        run: |
+          MODEL_VER=$(az ml model list --name iris-model \
+            -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME" \
+            --query "[-1].version" -o tsv)
+
+          sed -i "s#azureml:iris-model:1#azureml:iris-model:${MODEL_VER}#g" infra/deployment.yaml
+
+          az ml online-deployment create \
+          --name stephanie-iris-deployment-10 \
+            --file infra/deployment.yaml \
+            -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME" \
+            --set environment="azureml:iris-env-twopointoh:1" \
+            --all-traffic
+
+      - name: Invoke endpoint (smoke test)
+        run: |
+          az ml online-endpoint invoke \
+            --name "$AML_ENDPOINT_NAME" \
+            --request-file request.json \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --workspace-name "$AZURE_WORKSPACE_NAME"
+
+###########################################
+#  MONITORING & ALERTS VIA LOG ANALYTICS  #
+###########################################
+
   monitor_and_alerts:
     name: Wire AML → LA + Alerts
     needs: ml-cicd

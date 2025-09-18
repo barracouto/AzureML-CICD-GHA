@@ -54,83 +54,83 @@ jobs:
             --workspace-name "$AZURE_WORKSPACE_NAME"
             
 
-      # - name: Run unit tests
-      #   run: pytest -q
+      - name: Run unit tests
+        run: pytest -q
 
-      # - name: Submit AML training job and wait
-      #   run: |
-      #     az ml compute list \
-      #       --resource-group "$AZURE_RESOURCE_GROUP" \
-      #       --workspace-name "$AZURE_WORKSPACE_NAME" -o table
+      - name: Submit AML training job and wait
+        run: |
+          az ml compute list \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --workspace-name "$AZURE_WORKSPACE_NAME" -o table
 
-      #     JOB_ID=$(az ml job create \
-      #       --file ml/pipeline-job.yaml \
-      #       --resource-group "$AZURE_RESOURCE_GROUP" \
-      #       --workspace-name "$AZURE_WORKSPACE_NAME" \
-      #       --set compute=azureml:${AML_COMPUTE} \
-      #       --query name -o tsv)
+          JOB_ID=$(az ml job create \
+            --file ml/pipeline-job.yaml \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --workspace-name "$AZURE_WORKSPACE_NAME" \
+            --set compute=azureml:${AML_COMPUTE} \
+            --query name -o tsv)
 
-      #     echo "Submitted job: $JOB_ID"
-      #     echo "JOB_ID=$JOB_ID" >> "$GITHUB_ENV"
+          echo "Submitted job: $JOB_ID"
+          echo "JOB_ID=$JOB_ID" >> "$GITHUB_ENV"
 
-      #     az ml job stream --name "$JOB_ID" \
-      #       --resource-group "$AZURE_RESOURCE_GROUP" \
-      #       --workspace-name "$AZURE_WORKSPACE_NAME"
+          az ml job stream --name "$JOB_ID" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --workspace-name "$AZURE_WORKSPACE_NAME"
 
-      # - name: Verify training completed
-      #   run: |
-      #     STATUS=$(az ml job show -n "$JOB_ID" \
-      #       -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME" \
-      #       --query status -o tsv)
-      #     echo "Job status: $STATUS"
-      #     test "$STATUS" = "Completed"
+      - name: Verify training completed
+        run: |
+          STATUS=$(az ml job show -n "$JOB_ID" \
+            -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME" \
+            --query status -o tsv)
+          echo "Job status: $STATUS"
+          test "$STATUS" = "Completed"
 
-      # - name: Register model from job output
-      #   run: |
-      #     az ml model create \
-      #       --name iris-model-twopointoh \
-      #       --type custom_model \
-      #       --path "azureml://jobs/${JOB_ID}/outputs/model_dir" \
-      #       --resource-group "$AZURE_RESOURCE_GROUP" \
-      #       --workspace-name "$AZURE_WORKSPACE_NAME"
+      - name: Register model from job output
+        run: |
+          az ml model create \
+            --name iris-model-twopointoh \
+            --type custom_model \
+            --path "azureml://jobs/${JOB_ID}/outputs/model_dir" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --workspace-name "$AZURE_WORKSPACE_NAME"
 
-      # - name: Create endpoint (idempotent)
-      #   run: |
-      #     az ml online-endpoint show \
-      #       --name "$AML_ENDPOINT_NAME" \
-      #       -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME" \
-      #     || az ml online-endpoint create \
-      #          --name "$AML_ENDPOINT_NAME" \
-      #          --file infra/endpoint.yaml \
-      #          -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME"
-      # - name: Ensure inference environment exists (idempotent)
-      #   run: |
-      #     az ml environment show \
-      #       --name iris-env-twopointoh --version 1 \
-      #       -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME" >/dev/null 2>&1 || \
-      #     az ml environment create \
-      #       --file ml/env/environment.yaml \
-      #       -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME"
+      - name: Create endpoint (idempotent)
+        run: |
+          az ml online-endpoint show \
+            --name "$AML_ENDPOINT_NAME" \
+            -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME" \
+          || az ml online-endpoint create \
+               --name "$AML_ENDPOINT_NAME" \
+               --file infra/endpoint.yaml \
+               -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME"
+      - name: Ensure inference environment exists (idempotent)
+        run: |
+          az ml environment show \
+            --name iris-env-twopointoh --version 1 \
+            -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME" >/dev/null 2>&1 || \
+          az ml environment create \
+            --file ml/env/environment.yaml \
+            -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME"
 
-      # - name: Create/Update deployment
-      #   run: |
-      #     MODEL_VER=$(az ml model list --name iris-model \
-      #       -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME" \
-      #       --query "[-1].version" -o tsv)
+      - name: Create/Update deployment
+        run: |
+          MODEL_VER=$(az ml model list --name iris-model \
+            -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME" \
+            --query "[-1].version" -o tsv)
 
-      #     sed -i "s#azureml:iris-model:1#azureml:iris-model:${MODEL_VER}#g" infra/deployment.yaml
+          sed -i "s#azureml:iris-model:1#azureml:iris-model:${MODEL_VER}#g" infra/deployment.yaml
 
-      #     az ml online-deployment create \
-      #       --name stephanie-iris-deployment-twopointoh \
-      #       --file infra/deployment.yaml \
-      #       -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME" \
-      #       --set environment="azureml:iris-env:1" \
-      #       --all-traffic
+          az ml online-deployment create \
+            --name stephanie-iris-deployment-twopointoh \
+            --file infra/deployment.yaml \
+            -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME" \
+            --set environment="azureml:iris-env:1" \
+            --all-traffic
 
-      # - name: Invoke endpoint (smoke test)
-      #   run: |
-      #     az ml online-endpoint invoke \
-      #       --name "$AML_ENDPOINT_NAME" \
-      #       --request-file request.json \
-      #       --resource-group "$AZURE_RESOURCE_GROUP" \
-      #       --workspace-name "$AZURE_WORKSPACE_NAME"
+      - name: Invoke endpoint (smoke test)
+        run: |
+          az ml online-endpoint invoke \
+            --name "$AML_ENDPOINT_NAME" \
+            --request-file request.json \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --workspace-name "$AZURE_WORKSPACE_NAME"

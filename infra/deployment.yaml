@@ -1,4 +1,4 @@
-name: stephanie-iris-deployment-twopointoh
+name: stephanie-iris-deployment
 endpoint_name: iris-endpoint
 model: azureml:iris-model:1
 code_configuration:

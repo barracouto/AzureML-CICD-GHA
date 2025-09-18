@@ -48,14 +48,12 @@ jobs:
       # Create env only if it doesn't already exist
       - name: Create/Update AML environment (idempotent)
         run: |
-          az ml environment show \
-            --name iris-env-UPDATED --version 1 \
-            --resource-group "$AZURE_RESOURCE_GROUP" \
-            --workspace-name "$AZURE_WORKSPACE_NAME" >/dev/null 2>&1 || \
           az ml environment create \
             --file ml/env/environment.yaml \
+            -- version 1 \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --workspace-name "$AZURE_WORKSPACE_NAME"
+            
 
       # - name: Run unit tests
       #   run: pytest -q
@@ -91,7 +89,7 @@ jobs:
       # - name: Register model from job output
       #   run: |
       #     az ml model create \
-      #       --name iris-model \
+      #       --name iris-model-twopointoh \
       #       --type custom_model \
       #       --path "azureml://jobs/${JOB_ID}/outputs/model_dir" \
       #       --resource-group "$AZURE_RESOURCE_GROUP" \
@@ -109,7 +107,7 @@ jobs:
       # - name: Ensure inference environment exists (idempotent)
       #   run: |
       #     az ml environment show \
-      #       --name iris-env --version 1 \
+      #       --name iris-env-twopointoh --version 1 \
       #       -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME" >/dev/null 2>&1 || \
       #     az ml environment create \
       #       --file ml/env/environment.yaml \
@@ -124,7 +122,7 @@ jobs:
       #     sed -i "s#azureml:iris-model:1#azureml:iris-model:${MODEL_VER}#g" infra/deployment.yaml
 
       #     az ml online-deployment create \
-      #       --name stephanie-iris-deployment \
+      #       --name stephanie-iris-deployment-twopointoh \
       #       --file infra/deployment.yaml \
       #       -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME" \
       #       --set environment="azureml:iris-env:1" \

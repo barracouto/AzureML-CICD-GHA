@@ -1,4 +1,4 @@
-name: iris-endpoint
+name: iris-endpoint-twopointoh
 auth_mode: key
 
 # update to deploy

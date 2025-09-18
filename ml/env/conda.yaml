@@ -1,5 +1,5 @@
 # ml/env/conda.yaml
-name: train-env-UPDATED
+name: train-env-twopointoh
 dependencies:
   - python=3.10
   - pip

@@ -1,5 +1,5 @@
 $schema: https://azuremlschemas.azureedge.net/latest/environment.schema.json
-name: iris-env
+name: iris-env-twopointoh
 version: 1
 description: Environment for iris training
 os_type: linux

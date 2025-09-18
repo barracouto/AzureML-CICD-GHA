@@ -130,7 +130,7 @@ jobs:
           sed -i "s#azureml:iris-model:1#azureml:iris-model:${MODEL_VER}#g" infra/deployment.yaml
 
           az ml online-deployment create \
-          --name stephanie-iris-deployment-8 \
+          --name stephanie-iris-deployment-9 \
             --file infra/deployment.yaml \
             -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME" \
             --set environment="azureml:iris-env-twopointoh:1" \
@@ -152,20 +152,17 @@ jobs:
     name: Wire AML → LA + Alerts
     needs: ml-cicd
     runs-on: ubuntu-latest
-    environment: main        # <— this is the key change
+    environment: main
     permissions:
       id-token: write
       contents: read
     env:
-      # Use the same repo/environment variables you already have
       AZURE_CLIENT_ID:       ${{ vars.AZURE_CLIENT_ID }}
       AZURE_TENANT_ID:       ${{ vars.AZURE_TENANT_ID }}
       AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-
-      # Resource names (reuse your vars so both jobs stay in sync)
-      RESOURCE_GROUP:  ${{ vars.AZURE_RESOURCE_GROUP }}
-      AML_WORKSPACE:   ${{ vars.AZURE_WORKSPACE_NAME }}
-      ENDPOINT_NAME:   ${{ vars.AML_ENDPOINT_NAME }}
+      RESOURCE_GROUP:        ${{ vars.AZURE_RESOURCE_GROUP }}
+      AML_WORKSPACE:         ${{ vars.AZURE_WORKSPACE_NAME }}
+      ENDPOINT_NAME:         ${{ vars.AML_ENDPOINT_NAME }}
       DIAG_NAME: aml-to-la
       ACTION_GROUP: iris-alerts
 
@@ -174,9 +171,9 @@ jobs:
 
       - name: Preflight – OIDC vars exist
         run: |
-          test -n "${{ env.AZURE_CLIENT_ID }}"       || (echo "Missing AZURE_CLIENT_ID (repo Variable)"; exit 1)
-          test -n "${{ env.AZURE_TENANT_ID }}"       || (echo "Missing AZURE_TENANT_ID (repo Variable)"; exit 1)
-          test -n "${{ env.AZURE_SUBSCRIPTION_ID }}" || (echo "Missing AZURE_SUBSCRIPTION_ID (repo Variable)"; exit 1)
+          test -n "${{ env.AZURE_CLIENT_ID }}"       || (echo "Missing AZURE_CLIENT_ID"; exit 1)
+          test -n "${{ env.AZURE_TENANT_ID }}"       || (echo "Missing AZURE_TENANT_ID"; exit 1)
+          test -n "${{ env.AZURE_SUBSCRIPTION_ID }}" || (echo "Missing AZURE_SUBSCRIPTION_ID"; exit 1)
 
       - name: Azure login (OIDC)
         uses: azure/login@v2
@@ -201,7 +198,6 @@ jobs:
           WS_ID=$(az ml workspace show -g "$RESOURCE_GROUP" -n "$AML_WORKSPACE" --query id -o tsv)
           echo "WS_ID=$WS_ID" >> $GITHUB_OUTPUT
 
-          # Pick a Log Analytics workspace in the same RG (change if you want a specific one)
           LAW_NAME=$(az monitor log-analytics workspace list -g "$RESOURCE_GROUP" --query "[0].name" -o tsv)
           if [ -z "$LAW_NAME" ] || [ "$LAW_NAME" = "null" ]; then
             echo "No Log Analytics workspace found in RG $RESOURCE_GROUP" >&2
@@ -236,6 +232,13 @@ jobs:
                     metrics='[{"category":"AllMetrics","enabled":true}]'
           fi
 
+      # move a test call BEFORE creating alerts, so tables have data
+      - name: Smoke a request (creates fresh logs)
+        shell: bash
+        run: |
+          echo '{"data":[[5.1,3.5,1.4,0.2]]}' > request.json
+          az ml online-endpoint invoke -n "$ENDPOINT_NAME" --request-file request.json || true
+
       - name: Create/Update Action Group (email)
         shell: bash
         run: |
@@ -252,14 +255,14 @@ jobs:
               --set emailReceivers="[{'name':'primary','emailAddress':'$EMAIL'}]"
           fi
 
-      - name: Create/Update Alert – 5xx failures in last 5m
+      - name: Create/Update Alert – 5xx failures in last 5m (works with both table types)
         shell: bash
         run: |
           set -e
           LA_ID="${{ steps.ids.outputs.LA_ID }}"
           LA_LOC="${{ steps.ids.outputs.LA_LOC }}"
           RULE="iris-5xx-failures"
-          QUERY="AmlOnlineEndpointAccessLogs | where TimeGenerated > ago(5m) | where EndpointName == '$ENDPOINT_NAME' and StatusCode >= 500"
+          QUERY="let Access = union isfuzzy=true (AmlOnlineEndpointAccessLogs | project TimeGenerated, EndpointName, StatusCode), (AzureDiagnostics | where Category == 'AmlOnlineEndpointAccessLogs' | project TimeGenerated, EndpointName=tostring(endpointName_s), StatusCode=todouble(statusCode_d)); Access | where TimeGenerated > ago(5m) | where EndpointName == '${ENDPOINT_NAME}' | where StatusCode >= 500"
           if az monitor scheduled-query show -g "$RESOURCE_GROUP" -n "$RULE" >/dev/null 2>&1; then
             az monitor scheduled-query update -g "$RESOURCE_GROUP" -n "$RULE" \
               --scopes "$LA_ID" --location "$LA_LOC" --severity 3 --evaluation-frequency 5m --window-size 5m \
@@ -272,17 +275,17 @@ jobs:
               --action-groups "$(az monitor action-group show -g "$RESOURCE_GROUP" -n "$ACTION_GROUP" --query id -o tsv)" \
               --condition "count 'Q1' > 0" \
               --condition-query "Q1=$QUERY" \
-              --description "Any 5xx responses at iris-endpoint in the last 5 minutes."
+              --description "Any 5xx responses at ${ENDPOINT_NAME} in the last 5 minutes."
           fi
 
-      - name: Create/Update Alert – no predictions in last 10m
+      - name: Create/Update Alert – no predictions in last 10m (works with both table types)
         shell: bash
         run: |
           set -e
           LA_ID="${{ steps.ids.outputs.LA_ID }}"
           LA_LOC="${{ steps.ids.outputs.LA_LOC }}"
           RULE="iris-no-predictions-10m"
-          QUERY="AppTraces | where TimeGenerated > ago(10m) | where Message has 'predictions'"
+          QUERY="let Preds = union isfuzzy=true (AppTraces | project TimeGenerated, Message=tostring(Message)), (traces | project TimeGenerated, Message=tostring(message)), (AmlOnlineEndpointConsoleLogs | project TimeGenerated, Message=tostring(Message)), (AzureDiagnostics | where Category == 'AmlOnlineEndpointConsoleLogs' | project TimeGenerated, Message=tostring(message_s)); Preds | where TimeGenerated > ago(10m) | where Message has 'predictions'"
           if az monitor scheduled-query show -g "$RESOURCE_GROUP" -n "$RULE" >/dev/null 2>&1; then
             az monitor scheduled-query update -g "$RESOURCE_GROUP" -n "$RULE" \
               --scopes "$LA_ID" --location "$LA_LOC" --severity 3 --evaluation-frequency 5m --window-size 10m \
@@ -295,14 +298,8 @@ jobs:
               --action-groups "$(az monitor action-group show -g "$RESOURCE_GROUP" -n "$ACTION_GROUP" --query id -o tsv)" \
               --condition "count 'Q2' < 1" \
               --condition-query "Q2=$QUERY" \
-              --description "No predictions traces in 10 minutes (endpoint likely unhealthy or idle)."
+              --description "No 'predictions' traces in 10 minutes."
           fi
-
-      - name: Smoke a request (creates fresh logs)
-        shell: bash
-        run: |
-          echo '{"data":[[5.1,3.5,1.4,0.2]]}' > request.json
-          az ml online-endpoint invoke -n "$ENDPOINT_NAME" --request-file request.json || true
 
       - name: Done
         run: echo "✅ Monitoring and alerting configured"

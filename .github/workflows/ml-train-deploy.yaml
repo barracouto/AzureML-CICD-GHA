@@ -129,7 +129,7 @@ jobs:
           sed -i "s#azureml:iris-model:1#azureml:iris-model:${MODEL_VER}#g" infra/deployment.yaml
 
           az ml online-deployment create \
-            --name stephanie-iris-deployment-5 \
+          --name stephanie-iris-deployment-6 \ ####### <-- UPDATE THIS NAME
             --file infra/deployment.yaml \
             -g "$AZURE_RESOURCE_GROUP" -w "$AZURE_WORKSPACE_NAME" \
             --set environment="azureml:iris-env-twopointoh:1" \
@@ -151,46 +151,38 @@ jobs:
     name: Wire AML → LA + Alerts
     needs: ml-cicd
     runs-on: ubuntu-latest
+    environment: main        # <— this is the key change
     permissions:
       id-token: write
       contents: read
     env:
-      RESOURCE_GROUP: steph-gha-cicd-rg
-      AML_WORKSPACE: steph-gha-cicd-mlw
-      ENDPOINT_NAME: iris-endpoint
+      # Use the same repo/environment variables you already have
+      AZURE_CLIENT_ID:       ${{ vars.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID:       ${{ vars.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # Resource names (reuse your vars so both jobs stay in sync)
+      RESOURCE_GROUP:  ${{ vars.AZURE_RESOURCE_GROUP }}
+      AML_WORKSPACE:   ${{ vars.AZURE_WORKSPACE_NAME }}
+      ENDPOINT_NAME:   ${{ vars.AML_ENDPOINT_NAME }}
       DIAG_NAME: aml-to-la
       ACTION_GROUP: iris-alerts
 
     steps:
       - uses: actions/checkout@v4
-      - name: Resolve OIDC inputs
-        id: oidc
-        shell: bash
+
+      - name: Preflight – OIDC vars exist
         run: |
-          set -e
-          CID="${{ secrets.AZURE_CLIENT_ID }}"
-          [ -z "$CID" ] && CID="${{ vars.AZURE_CLIENT_ID }}"
-          TID="${{ secrets.AZURE_TENANT_ID }}"
-          [ -z "$TID" ] && TID="${{ vars.AZURE_TENANT_ID }}"
-          SUB="${{ secrets.AZURE_SUBSCRIPTION_ID }}"
-          [ -z "$SUB" ] && SUB="${{ vars.AZURE_SUBSCRIPTION_ID }}"
+          test -n "${{ env.AZURE_CLIENT_ID }}"       || (echo "Missing AZURE_CLIENT_ID (repo Variable)"; exit 1)
+          test -n "${{ env.AZURE_TENANT_ID }}"       || (echo "Missing AZURE_TENANT_ID (repo Variable)"; exit 1)
+          test -n "${{ env.AZURE_SUBSCRIPTION_ID }}" || (echo "Missing AZURE_SUBSCRIPTION_ID (repo Variable)"; exit 1)
 
-          # Fail fast with clear guidance
-          [ -z "$CID" ] && { echo "AZURE_CLIENT_ID not set (add as a repo Variable or Secret)."; exit 1; }
-          [ -z "$TID" ] && { echo "AZURE_TENANT_ID not set (add as a repo Variable or Secret)."; exit 1; }
-          [ -z "$SUB" ] && { echo "AZURE_SUBSCRIPTION_ID not set (add as a repo Variable or Secret)."; exit 1; }
-
-          echo "AZ_CLIENT_ID=$CID"           >> $GITHUB_ENV
-          echo "AZ_TENANT_ID=$TID"           >> $GITHUB_ENV
-          echo "AZ_SUBSCRIPTION_ID=$SUB"     >> $GITHUB_ENV
-          echo "Resolved OIDC inputs."
-
-      - name: Azure login (OIDC, no secrets)
+      - name: Azure login (OIDC)
         uses: azure/login@v2
         with:
-          client-id: ${{ env.AZ_CLIENT_ID }}
-          tenant-id: ${{ env.AZ_TENANT_ID }}
-          subscription-id: ${{ env.AZ_SUBSCRIPTION_ID }}
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
 
       - name: Ensure CLI extensions
         run: |
